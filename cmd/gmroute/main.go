@@ -13,6 +13,7 @@ import (
 	"github.com/GrishaMelixov/GMRoute/internal/config"
 	"github.com/GrishaMelixov/GMRoute/internal/dashboard"
 	"github.com/GrishaMelixov/GMRoute/internal/failover"
+	"github.com/GrishaMelixov/GMRoute/internal/geo"
 	"github.com/GrishaMelixov/GMRoute/internal/proxy"
 	"github.com/GrishaMelixov/GMRoute/internal/router"
 )
@@ -49,8 +50,15 @@ func main() {
 
 	f := failover.New(r, fallbackRoute)
 
+	// look up our own location for globe arcs
+	if loc, err := geo.LookupSelf(); err == nil {
+		proxy.SetSrcLocation(loc.Lat, loc.Lng)
+		log.Printf("source location: %.2f, %.2f (%s)", loc.Lat, loc.Lng, loc.Country)
+	}
+
 	mux := http.NewServeMux()
-	dashboard.Register(mux)
+	dash := dashboard.New(r, f, cfg, *configPath)
+	dash.Register(mux)
 	go func() {
 		log.Printf("dashboard: http://localhost:9090")
 		http.ListenAndServe(":9090", mux)

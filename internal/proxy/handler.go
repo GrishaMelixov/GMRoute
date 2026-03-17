@@ -8,7 +8,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/GrishaMelixov/GMRoute/internal/connlog"
 	"github.com/GrishaMelixov/GMRoute/internal/failover"
+	"github.com/GrishaMelixov/GMRoute/internal/geo"
 	"github.com/GrishaMelixov/GMRoute/internal/metrics"
 	"github.com/GrishaMelixov/GMRoute/internal/router"
 	"github.com/GrishaMelixov/GMRoute/internal/sniffer"
@@ -31,6 +33,14 @@ const (
 	atypDomain = 0x03
 	atypIPv6   = 0x04
 )
+
+// srcLat/srcLng are set once at startup from geo.LookupSelf
+var srcLat, srcLng float64
+
+func SetSrcLocation(lat, lng float64) {
+	srcLat = lat
+	srcLng = lng
+}
 
 func handleConn(conn net.Conn, f *failover.Failover) {
 	defer conn.Close()
@@ -71,7 +81,35 @@ func handleConn(conn net.Conn, f *failover.Failover) {
 
 	conn.Write([]byte{0x05, 0x00, 0x00, 0x01, 0, 0, 0, 0, 0, 0})
 
+	// emit connection event asynchronously
+	routeStr := "direct"
+	if upstream {
+		routeStr = "upstream"
+	}
+	go emitEvent(routingHost, routeStr)
+
 	tunnel(clientConn, targetConn)
+}
+
+func emitEvent(domain, routeStr string) {
+	e := connlog.Event{
+		Domain: domain,
+		Route:  routeStr,
+		SrcLat: srcLat,
+		SrcLng: srcLng,
+		Time:   time.Now().UnixMilli(),
+	}
+
+	ips, err := net.LookupHost(domain)
+	if err == nil && len(ips) > 0 {
+		if loc, err := geo.Lookup(ips[0]); err == nil {
+			e.DstLat = loc.Lat
+			e.DstLng = loc.Lng
+			e.Country = loc.Country
+		}
+	}
+
+	connlog.Global.Emit(e)
 }
 
 func handshake(conn net.Conn) error {
