@@ -56,6 +56,23 @@ func (t *Trie[T]) Lookup(domain string) (T, bool) {
 	return *last, true
 }
 
+func (t *Trie[T]) Delete(domain string) bool {
+	parts := reverseParts(domain)
+	cur := t.root
+	for _, part := range parts {
+		next, ok := cur.children[part]
+		if !ok {
+			return false
+		}
+		cur = next
+	}
+	if cur.value == nil {
+		return false
+	}
+	cur.value = nil
+	return true
+}
+
 func reverseParts(domain string) []string {
 	parts := strings.Split(strings.ToLower(domain), ".")
 	for i, j := 0, len(parts)-1; i < j; i, j = i+1, j-1 {

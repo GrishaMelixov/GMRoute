@@ -59,6 +59,10 @@ func dial(route router.Route, target string) (net.Conn, error) {
 	return nil, fmt.Errorf("unknown route type: %v", route.Type)
 }
 
+func (f *Failover) ClearCache(domain string) {
+	f.cache.Delete(domain)
+}
+
 func dialViaUpstream(proxyAddr, target string) (net.Conn, error) {
 	conn, err := net.Dial("tcp", proxyAddr)
 	if err != nil {
