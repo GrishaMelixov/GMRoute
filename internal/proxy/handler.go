@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"time"
 
 	"github.com/GrishaMelixov/GMRoute/internal/failover"
 	"github.com/GrishaMelixov/GMRoute/internal/sniffer"
@@ -23,10 +24,12 @@ const (
 
 func handleConn(conn net.Conn, f *failover.Failover) {
 	defer conn.Close()
+	conn.SetDeadline(time.Now().Add(dialTimeout))
 
 	if err := handshake(conn); err != nil {
 		return
 	}
+	conn.SetDeadline(time.Time{})
 
 	target, host, err := readRequest(conn)
 	if err != nil {
