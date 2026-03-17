@@ -7,6 +7,7 @@ import (
 	"net"
 
 	"github.com/GrishaMelixov/GMRoute/internal/router"
+	"github.com/GrishaMelixov/GMRoute/internal/sniffer"
 )
 
 const (
@@ -32,7 +33,17 @@ func handleConn(conn net.Conn, r *router.Router) {
 		return
 	}
 
-	route := r.Resolve(host)
+	routingHost := host
+	clientConn := net.Conn(conn)
+	if net.ParseIP(host) != nil {
+		sniHost, peeked, _ := sniffer.SniffSNI(conn)
+		clientConn = peeked
+		if sniHost != "" {
+			routingHost = sniHost
+		}
+	}
+
+	route := r.Resolve(routingHost)
 
 	var targetConn net.Conn
 	switch route.Type {
@@ -50,7 +61,7 @@ func handleConn(conn net.Conn, r *router.Router) {
 
 	conn.Write([]byte{0x05, 0x00, 0x00, 0x01, 0, 0, 0, 0, 0, 0})
 
-	tunnel(conn, targetConn)
+	tunnel(clientConn, targetConn)
 }
 
 func dialViaUpstream(proxyAddr, target string) (net.Conn, error) {
