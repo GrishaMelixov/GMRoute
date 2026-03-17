@@ -6,7 +6,7 @@ import (
 	"io"
 	"net"
 
-	"github.com/GrishaMelixov/GMRoute/internal/router"
+	"github.com/GrishaMelixov/GMRoute/internal/failover"
 	"github.com/GrishaMelixov/GMRoute/internal/sniffer"
 )
 
@@ -21,7 +21,7 @@ const (
 	atypIPv6   = 0x04
 )
 
-func handleConn(conn net.Conn, r *router.Router) {
+func handleConn(conn net.Conn, f *failover.Failover) {
 	defer conn.Close()
 
 	if err := handshake(conn); err != nil {
@@ -43,16 +43,8 @@ func handleConn(conn net.Conn, r *router.Router) {
 		}
 	}
 
-	route := r.Resolve(routingHost)
-
-	var targetConn net.Conn
-	switch route.Type {
-	case router.Direct:
-		targetConn, err = net.Dial("tcp", target)
-	case router.Upstream:
-		targetConn, err = dialViaUpstream(route.ProxyAddr, target)
-	}
-
+	// Failover.Dial сам решает: direct, upstream или fallback с кэшированием.
+	targetConn, err := f.Dial(routingHost, target)
 	if err != nil {
 		conn.Write([]byte{0x05, 0x05, 0x00, 0x01, 0, 0, 0, 0, 0, 0})
 		return
@@ -62,60 +54,6 @@ func handleConn(conn net.Conn, r *router.Router) {
 	conn.Write([]byte{0x05, 0x00, 0x00, 0x01, 0, 0, 0, 0, 0, 0})
 
 	tunnel(clientConn, targetConn)
-}
-
-func dialViaUpstream(proxyAddr, target string) (net.Conn, error) {
-	conn, err := net.Dial("tcp", proxyAddr)
-	if err != nil {
-		return nil, err
-	}
-
-	if _, err := conn.Write([]byte{0x05, 0x01, noAuth}); err != nil {
-		conn.Close()
-		return nil, err
-	}
-
-	resp := make([]byte, 2)
-	if _, err := io.ReadFull(conn, resp); err != nil {
-		conn.Close()
-		return nil, err
-	}
-	if resp[1] != noAuth {
-		conn.Close()
-		return nil, fmt.Errorf("upstream proxy requires auth")
-	}
-
-	host, portStr, err := net.SplitHostPort(target)
-	if err != nil {
-		conn.Close()
-		return nil, err
-	}
-	port, err := net.LookupPort("tcp", portStr)
-	if err != nil {
-		conn.Close()
-		return nil, err
-	}
-
-	req := []byte{0x05, cmdConnect, 0x00, atypDomain, byte(len(host))}
-	req = append(req, []byte(host)...)
-	req = append(req, byte(port>>8), byte(port&0xff))
-
-	if _, err := conn.Write(req); err != nil {
-		conn.Close()
-		return nil, err
-	}
-
-	buf := make([]byte, 10)
-	if _, err := io.ReadFull(conn, buf); err != nil {
-		conn.Close()
-		return nil, err
-	}
-	if buf[1] != 0x00 {
-		conn.Close()
-		return nil, fmt.Errorf("upstream proxy connect failed: %d", buf[1])
-	}
-
-	return conn, nil
 }
 
 func handshake(conn net.Conn) error {
