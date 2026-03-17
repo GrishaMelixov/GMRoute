@@ -1,0 +1,18 @@
+# GMRoute configuration
+
+# Port to listen on for SOCKS5 connections
+port: 1080
+
+# Upstream SOCKS5 proxy address (used as fallback or for specific rules)
+# Example: "127.0.0.1:7890" if you have V2RayTun or similar running locally
+upstream: ""
+
+# Routing rules: domain -> route (direct or upstream)
+# Subdomains are matched automatically (e.g. youtube.com also matches www.youtube.com)
+rules:
+  - domain: youtube.com
+    route: upstream
+  - domain: instagram.com
+    route: upstream
+  - domain: x.com
+    route: upstream
