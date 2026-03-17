@@ -297,6 +297,23 @@ const dashboardHTML = `<!DOCTYPE html>
 <script src="//unpkg.com/globe.gl@2"></script>
 <script>
 // Globe
+const countries = [
+  {n:'Russia',lat:61.5,lng:105.3},{n:'USA',lat:37.1,lng:-95.7},{n:'China',lat:35.9,lng:104.2},
+  {n:'Brazil',lat:-14.2,lng:-51.9},{n:'Australia',lat:-25.3,lng:133.8},{n:'India',lat:20.6,lng:78.9},
+  {n:'Canada',lat:56.1,lng:-106.3},{n:'Argentina',lat:-38.4,lng:-63.6},{n:'Germany',lat:51.2,lng:10.5},
+  {n:'France',lat:46.2,lng:2.2},{n:'UK',lat:55.4,lng:-3.4},{n:'Japan',lat:36.2,lng:138.3},
+  {n:'Mexico',lat:23.6,lng:-102.6},{n:'Indonesia',lat:-0.8,lng:113.9},{n:'Saudi Arabia',lat:23.9,lng:45.1},
+  {n:'Turkey',lat:38.9,lng:35.2},{n:'South Africa',lat:-30.6,lng:22.9},{n:'Nigeria',lat:9.1,lng:8.7},
+  {n:'Egypt',lat:26.8,lng:30.8},{n:'Spain',lat:40.5,lng:-3.7},{n:'Italy',lat:41.9,lng:12.6},
+  {n:'Ukraine',lat:48.4,lng:31.2},{n:'Poland',lat:51.9,lng:19.1},{n:'Kazakhstan',lat:48.0,lng:66.9},
+  {n:'Sweden',lat:60.1,lng:18.6},{n:'Norway',lat:60.5,lng:8.5},{n:'Netherlands',lat:52.1,lng:5.3},
+  {n:'South Korea',lat:35.9,lng:127.8},{n:'Vietnam',lat:14.1,lng:108.3},{n:'Thailand',lat:15.9,lng:100.9},
+  {n:'Pakistan',lat:30.4,lng:69.3},{n:'Iran',lat:32.4,lng:53.7},{n:'Colombia',lat:4.6,lng:-74.3},
+  {n:'Chile',lat:-35.7,lng:-71.5},{n:'Algeria',lat:28.0,lng:1.7},{n:'Morocco',lat:31.8,lng:-7.1},
+  {n:'Kenya',lat:0.0,lng:37.9},{n:'Ethiopia',lat:9.1,lng:40.5},{n:'New Zealand',lat:-40.9,lng:174.9},
+  {n:'Philippines',lat:12.9,lng:121.8},{n:'Malaysia',lat:4.2,lng:108.0},{n:'Peru',lat:-9.2,lng:-75.0},
+]
+
 const wrap = document.getElementById('globe-wrap')
 const globe = Globe()
   .globeImageUrl('//unpkg.com/three-globe/example/img/earth-night.jpg')
@@ -307,6 +324,14 @@ const globe = Globe()
   .arcDashAnimateTime(1500)
   .arcStroke(0.5)
   .arcAltitude(0.3)
+  .labelsData(countries)
+  .labelLat('lat')
+  .labelLng('lng')
+  .labelText('n')
+  .labelColor(() => 'rgba(255,255,255,0.3)')
+  .labelSize(0.5)
+  .labelDotRadius(0)
+  .labelResolution(2)
   (document.getElementById('globe'))
 
 globe.controls().autoRotate = true
