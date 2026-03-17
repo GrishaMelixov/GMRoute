@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"flag"
 	"fmt"
 	"log"
@@ -12,8 +11,8 @@ import (
 	"syscall"
 
 	"github.com/GrishaMelixov/GMRoute/internal/config"
+	"github.com/GrishaMelixov/GMRoute/internal/dashboard"
 	"github.com/GrishaMelixov/GMRoute/internal/failover"
-	"github.com/GrishaMelixov/GMRoute/internal/metrics"
 	"github.com/GrishaMelixov/GMRoute/internal/proxy"
 	"github.com/GrishaMelixov/GMRoute/internal/router"
 )
@@ -50,24 +49,19 @@ func main() {
 
 	f := failover.New(r, fallbackRoute)
 
-	http.HandleFunc("/metrics", func(w http.ResponseWriter, _ *http.Request) {
-		m := metrics.Global
-		json.NewEncoder(w).Encode(map[string]int64{
-			"active_conns":  m.ActiveConns.Load(),
-			"total_conns":   m.TotalConns.Load(),
-			"direct_conns":  m.DirectConns.Load(),
-			"upstream_conn": m.UpstreamConn.Load(),
-			"errors":        m.Errors.Load(),
-		})
-	})
-	go http.ListenAndServe(":9090", nil)
+	mux := http.NewServeMux()
+	dashboard.Register(mux)
+	go func() {
+		log.Printf("dashboard: http://localhost:9090")
+		http.ListenAndServe(":9090", mux)
+	}()
 
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 
 	addr := fmt.Sprintf(":%d", cfg.Port)
 	server := proxy.NewServer(addr, f)
-	log.Printf("config loaded: port=%d upstream=%q rules=%d", cfg.Port, cfg.Upstream, len(cfg.Rules))
+	log.Printf("proxy listening on %s | upstream=%q | rules=%d", addr, cfg.Upstream, len(cfg.Rules))
 	if err := server.Start(ctx); err != nil {
 		log.Fatal(err)
 	}
