@@ -4,17 +4,17 @@ import (
 	"log"
 	"net"
 
-	"github.com/GrishaMelixov/GMRoute/internal/router"
+	"github.com/GrishaMelixov/GMRoute/internal/failover"
 )
 
 type Server struct {
 	addr     string
 	listener net.Listener
-	router   *router.Router
+	failover *failover.Failover
 }
 
-func NewServer(addr string, r *router.Router) *Server {
-	return &Server{addr: addr, router: r}
+func NewServer(addr string, f *failover.Failover) *Server {
+	return &Server{addr: addr, failover: f}
 }
 
 func (s *Server) Start() error {
@@ -30,7 +30,7 @@ func (s *Server) Start() error {
 		if err != nil {
 			return err
 		}
-		go handleConn(conn, s.router)
+		go handleConn(conn, s.failover)
 	}
 }
 
