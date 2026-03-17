@@ -3,15 +3,18 @@ package proxy
 import (
 	"log"
 	"net"
+
+	"github.com/GrishaMelixov/GMRoute/internal/router"
 )
 
 type Server struct {
 	addr     string
 	listener net.Listener
+	router   *router.Router
 }
 
-func NewServer(addr string) *Server {
-	return &Server{addr: addr}
+func NewServer(addr string, r *router.Router) *Server {
+	return &Server{addr: addr, router: r}
 }
 
 func (s *Server) Start() error {
@@ -27,7 +30,7 @@ func (s *Server) Start() error {
 		if err != nil {
 			return err
 		}
-		go handleConn(conn)
+		go handleConn(conn, s.router)
 	}
 }
 
