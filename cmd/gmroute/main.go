@@ -1,7 +1,11 @@
 package main
 
 import (
+	"context"
 	"log"
+	"os"
+	"os/signal"
+	"syscall"
 
 	"github.com/GrishaMelixov/GMRoute/internal/failover"
 	"github.com/GrishaMelixov/GMRoute/internal/proxy"
@@ -10,11 +14,13 @@ import (
 
 func main() {
 	r := router.NewRouter(router.RouteDirectly)
-
-	// r.AddRule("youtube.com", router.NewUpstreamRoute("127.0.0.1:7890"))
-
 	f := failover.New(r, router.RouteDirectly)
 
+	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer cancel()
+
 	server := proxy.NewServer(":1080", f)
-	log.Fatal(server.Start())
+	if err := server.Start(ctx); err != nil {
+		log.Fatal(err)
+	}
 }
