@@ -5,11 +5,19 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"sync"
 	"time"
 
 	"github.com/GrishaMelixov/GMRoute/internal/failover"
 	"github.com/GrishaMelixov/GMRoute/internal/sniffer"
 )
+
+var bufPool = sync.Pool{
+	New: func() any {
+		buf := make([]byte, 32*1024)
+		return &buf
+	},
+}
 
 const (
 	socks5Version = 0x05
@@ -145,15 +153,15 @@ func readRequest(conn net.Conn) (target, host string, err error) {
 func tunnel(client, target net.Conn) {
 	done := make(chan struct{}, 2)
 
-	go func() {
-		io.Copy(target, client)
+	copy := func(dst, src net.Conn) {
+		bufp := bufPool.Get().(*[]byte)
+		defer bufPool.Put(bufp)
+		io.CopyBuffer(dst, src, *bufp)
 		done <- struct{}{}
-	}()
+	}
 
-	go func() {
-		io.Copy(client, target)
-		done <- struct{}{}
-	}()
+	go copy(target, client)
+	go copy(client, target)
 
 	<-done
 }
