@@ -9,6 +9,8 @@ import (
 	"time"
 
 	"github.com/GrishaMelixov/GMRoute/internal/failover"
+	"github.com/GrishaMelixov/GMRoute/internal/metrics"
+	"github.com/GrishaMelixov/GMRoute/internal/router"
 	"github.com/GrishaMelixov/GMRoute/internal/sniffer"
 )
 
@@ -54,9 +56,14 @@ func handleConn(conn net.Conn, f *failover.Failover) {
 		}
 	}
 
-	// Failover.Dial сам решает: direct, upstream или fallback с кэшированием.
+	route := f.ResolvedRoute(routingHost)
+	upstream := route.Type == router.Upstream
+	metrics.Global.ConnOpened(upstream)
+	defer metrics.Global.ConnClosed()
+
 	targetConn, err := f.Dial(routingHost, target)
 	if err != nil {
+		metrics.Global.Error()
 		conn.Write([]byte{0x05, 0x05, 0x00, 0x01, 0, 0, 0, 0, 0, 0})
 		return
 	}

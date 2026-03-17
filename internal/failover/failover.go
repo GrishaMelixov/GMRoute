@@ -19,6 +19,13 @@ func New(r *router.Router, fallback router.Route) *Failover {
 	return &Failover{router: r, fallback: fallback}
 }
 
+func (f *Failover) ResolvedRoute(host string) router.Route {
+	if cached, ok := f.cache.Load(host); ok {
+		return cached.(router.Route)
+	}
+	return f.router.Resolve(host)
+}
+
 func (f *Failover) Dial(host, target string) (net.Conn, error) {
 	if cached, ok := f.cache.Load(host); ok {
 		return dial(cached.(router.Route), target)
