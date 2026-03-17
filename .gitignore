@@ -33,8 +33,3 @@ go.work.sum
 .vscode/
 .idea/
 
-# AI / Claude
-CLAUDE.md
-.claude/
-lessons.md
-todo.md
