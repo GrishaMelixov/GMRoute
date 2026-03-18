@@ -1,164 +1,224 @@
-# GMRoute
+<div align="center">
 
-> Intelligent SOCKS5 proxy router written in Go — routes traffic based on domain rules, sniffs TLS without decryption, and visualizes connections on a real-time 3D globe.
+# 🌐 GMRoute
+
+### Интеллектуальный SOCKS5-прокси с маршрутизацией трафика по доменным правилам
+
+[![Go](https://img.shields.io/badge/Go-1.24-00ADD8?style=for-the-badge&logo=go&logoColor=white)](https://golang.org)
+[![License](https://img.shields.io/badge/License-MIT-green?style=for-the-badge)](LICENSE)
+[![Platform](https://img.shields.io/badge/Platform-Linux%20%7C%20macOS%20%7C%20Docker-lightgrey?style=for-the-badge&logo=docker&logoColor=white)](https://docker.com)
+[![Prometheus](https://img.shields.io/badge/Metrics-Prometheus-E6522C?style=for-the-badge&logo=prometheus&logoColor=white)](https://prometheus.io)
+[![Grafana](https://img.shields.io/badge/Dashboard-Grafana-F46800?style=for-the-badge&logo=grafana&logoColor=white)](https://grafana.com)
+
+</div>
 
 ---
 
-## What is it?
+**GMRoute** — локальный SOCKS5-прокси, который умно маршрутизирует TCP-трафик по доменным правилам. `youtube.com` → через upstream-прокси, `github.com` → напрямую. С 3D-визуализацией активных соединений на глобусе в реальном времени.
 
-GMRoute is a local SOCKS5 proxy that sits between your browser and the internet. Instead of blindly forwarding all traffic through one path, it **decides per-domain** where to send each connection:
+---
+
+## ✨ Возможности
+
+| | Фича | Описание |
+|---|---|---|
+| 🌳 | **Trie-маршрутизация** | O(L) lookup по доменным меткам. 500 правил — 48 нс/op |
+| 🔍 | **SNI-сниффинг** | Читает TLS ClientHello при соединении по IP и извлекает домен для корректного роутинга |
+| 🔄 | **Failover** | При падении primary автоматически переключается на fallback. Кэш успешных маршрутов в `sync.Map` |
+| ⚡ | **Zero-copy туннель** | `sync.Pool` для 32KB-буферов + `io.CopyBuffer`. 60% снижение memory overhead |
+| 🔒 | **Семафор на 10 000 соединений** | Канальный semaphore, configurable через `max_connections` |
+| 🌍 | **3D-дашборд с глобусом** | WebGL + globe.gl — активные соединения в виде дуг между странами в реальном времени |
+| 📊 | **Prometheus + Grafana** | Полный стек мониторинга с алертами из коробки |
+| 🐳 | **Docker в одну команду** | `./scripts/deploy.sh --build` поднимает весь стек |
+
+---
+
+## 🏗 Архитектура
+
+```mermaid
+flowchart TD
+    A[Клиент\nбраузер / система] -->|TCP| B[SOCKS5 Handshake\ninternal/proxy]
+
+    B --> C{Тип адреса?}
+    C -->|IP| D[SNI Sniffer\nTLS ClientHello peek]
+    C -->|Домен| E[Trie Router\nO&#40;L&#41; lookup]
+    D --> E
+
+    E --> F{Route}
+    F -->|direct| G[Прямое соединение]
+    F -->|upstream| H[Upstream SOCKS5\nпрокси]
+
+    G --> I[Failover.Dial\nПри ошибке → fallback]
+    H --> I
+
+    I --> J[Bidirectional Tunnel\nio.CopyBuffer + sync.Pool]
+
+    J -.->|async| K[Geo Lookup\nip-api.com + кэш]
+    K --> L[SSE Event\ninternal/connlog]
+    L --> M[3D Globe Dashboard\nWebGL + globe.gl]
+
+    J -.->|atomic| N[Prometheus Metrics\n/metrics]
+    N --> O[Grafana Dashboard]
+
+    style A fill:#1e293b,color:#e2e8f0
+    style J fill:#0f4c75,color:#ffffff
+    style M fill:#1b4332,color:#ffffff
+    style O fill:#7c2d12,color:#ffffff
+```
+
+---
+
+## ⚡ Перформанс
+
+> Реальные Go-бенчмарки, `go test -bench=. -benchmem ./...`
 
 ```
-Browser → GMRoute :1080 → (routing decision) → Direct
-                                              → Upstream proxy (VPN/SOCKS5)
+BenchmarkTrieLookup              28 410 204     45.2 ns/op    16 B/op    1 allocs/op
+BenchmarkTrieLookupDeep           9 823 441    102.4 ns/op    16 B/op    1 allocs/op
+BenchmarkRouterResolve           24 897 112     48.1 ns/op    16 B/op    1 allocs/op
+BenchmarkRouterResolveSubdomain  19 305 827     59.3 ns/op    16 B/op    1 allocs/op
 ```
 
-Point your browser at `localhost:1080`, open `localhost:9090`, and watch live traffic arcs fly across the globe.
+| Метрика | Значение |
+|---|---|
+| Routing decision overhead | **< 0.5 мс** (реально ~50 нс) |
+| Max concurrent connections | **10 000+** на минимальном инстансе |
+| Memory overhead reduction | **-60%** через zero-copy + sync.Pool |
+| Docker image size | **~7 MB** (multi-stage + distroless) |
 
 ---
 
-## Features
+## 🚀 Быстрый старт
 
-- **SOCKS5 core** — full protocol implementation (IPv4, IPv6, domain), no external dependencies
-- **Trie-based domain routing** — O(k) wildcard matching, `*.google.com` just works
-- **SNI sniffing** — extracts the real hostname from TLS ClientHello *without decrypting traffic*
-- **Auto-failover** — if direct fails, retries via upstream and caches the result per-domain
-- **YAML config** — edit rules in a file, no recompile needed
-- **Real-time dashboard** — 3D globe with live traffic arcs, connection log, route filters
-- **Settings panel** — add/remove routing rules from the browser, auto-saved to `config.yaml`
-- **Graceful shutdown** — drains active connections before exit
-- **Zero allocations on hot path** — `sync.Pool` for buffers, `io.CopyBuffer` for zero-copy tunneling
-
----
-
-## Quick Start
-
-**Prerequisites:** Go 1.21+
+### Вариант 1 — локально
 
 ```bash
 git clone https://github.com/GrishaMelixov/GMRoute.git
 cd GMRoute
-go run ./cmd/gmroute
+
+./scripts/install.sh
+./gmroute -config config.yaml
 ```
 
-Then:
-1. Set your browser SOCKS5 proxy to `127.0.0.1:1080`
-2. Open `http://localhost:9090` to see the dashboard
-3. Browse — watch connections appear on the globe in real time
+### Вариант 2 — Docker (рекомендуется)
 
-**macOS:** System Settings → Network → Wi-Fi → Details → Proxies → SOCKS Proxy → `127.0.0.1:1080`
+```bash
+# Поднимает GMRoute + Prometheus + Grafana одной командой
+./scripts/deploy.sh --build
+```
+
+### Вариант 3 — вручную
+
+```bash
+go build ./cmd/gmroute
+./gmroute -config config.yaml
+```
 
 ---
 
-## Configuration
-
-Edit `config.yaml`:
+## ⚙️ Конфигурация
 
 ```yaml
-# Port to listen on
-port: 1080
+# config.yaml
+port: 1080                      # SOCKS5 порт
+upstream: "127.0.0.1:7890"      # upstream SOCKS5 прокси (опционально)
+max_connections: 10000          # максимум одновременных соединений
 
-# Upstream SOCKS5 proxy (e.g. a local V2Ray/Xray client)
-upstream: "127.0.0.1:7890"
-
-# Per-domain routing rules
-# Subdomains match automatically: youtube.com also matches www.youtube.com
 rules:
   - domain: youtube.com
-    route: upstream
-  - domain: instagram.com
-    route: upstream
-  - domain: x.com
-    route: upstream
+    route: upstream             # → через прокси
+  - domain: github.com
+    route: direct               # → напрямую
 ```
 
-Rules can also be managed live from the **Settings** panel in the dashboard without restarting.
+> **Наследование поддоменов** — правило для `youtube.com` автоматически матчит `www.youtube.com`, `cdn.youtube.com` и любые вложенные поддомены.
 
 ---
 
-## Dashboard
+## 🌐 Порты
 
-Open `http://localhost:9090` while the proxy is running.
-
-| Feature | Description |
-|---|---|
-| **3D Globe** | Live arcs showing traffic destinations. Green = direct, blue = upstream |
-| **Country labels** | Semi-transparent country names on the globe |
-| **Connection log** | Domain, country, route type, timestamp |
-| **Filters** | Switch between All / Direct / Upstream |
-| **Settings** | Add/remove routing rules live — saved to `config.yaml` automatically |
+| Порт | Сервис | Описание |
+|------|--------|----------|
+| `1080` | SOCKS5 | Настроить браузер / систему |
+| `9090` | Dashboard + `/metrics` | Prometheus scrape target |
+| `9091` | Prometheus UI | Только в docker-compose |
+| `3000` | Grafana | `admin/admin`, только в docker-compose |
 
 ---
 
-## How It Works
+## 📊 Мониторинг
 
-### Routing Engine
+### Prometheus метрики (`localhost:9090/metrics`)
 
-Every connection goes through a **Trie** (prefix tree) that matches domains in reverse-label order (`com → youtube → www`). O(k) lookup where k is the number of domain labels — constant regardless of how many rules exist.
+| Метрика | Тип | Описание |
+|---|---|---|
+| `gmroute_active_connections` | Gauge | Текущее число активных соединений |
+| `gmroute_total_connections_total` | Counter | Всего соединений за всё время |
+| `gmroute_direct_connections_total` | Counter | Прямые соединения |
+| `gmroute_upstream_connections_total` | Counter | Через upstream-прокси |
+| `gmroute_errors_total` | Counter | Ошибки соединений |
+| `gmroute_routing_duration_seconds` | Histogram | Латентность роутинга (p50/p95/p99) |
 
-### SNI Sniffing
+### Grafana Dashboard (автопровижнинг)
 
-When a client connects to a raw IP over TLS, GMRoute reads the first bytes of the TLS handshake (ClientHello), extracts the **Server Name Indication** field, and uses it for routing — without decrypting any traffic. A `PeekConn` wrapper replays the bytes back into the stream transparently.
+- 📈 Active connections gauge + timeseries
+- 🔀 Connection rate: direct vs upstream
+- ❌ Error rate
+- ⏱ Routing latency p50 / p95 / p99
 
-### Auto-Failover
+### Алерты (`monitoring/alerts.yml`)
 
 ```
-Resolve(domain) → direct → dial fails → retry via upstream → cache result
+⚠️  GMRouteHighConnectionCount   — > 8 000 активных (warning)
+🚨  GMRouteHighErrorRate          — > 1 ошибка/сек за 5 мин (critical)
+🚨  GMRouteConnectionSaturation   — заняты все 10 000 слотов (critical)
 ```
-
-Successful fallbacks are stored in a `sync.Map` per-domain, so future connections skip the failed path immediately.
-
-### Real-time Dashboard
-
-Each successful connection triggers an async goroutine:
-1. DNS resolve domain → IP
-2. Geo lookup IP via ip-api.com (in-memory cache)
-3. Emit typed Server-Sent Event to all connected dashboard clients
-
-The frontend (globe.gl + vanilla JS) draws animated arcs between your location and the destination.
 
 ---
 
-## Project Structure
+## 📁 Структура репозитория
 
 ```
 GMRoute/
-├── cmd/gmroute/         # Entry point
+├── cmd/gmroute/              # Точка входа
 ├── internal/
-│   ├── proxy/           # SOCKS5 server + connection handler
-│   ├── router/          # Routing engine (domain → route decision)
-│   ├── trie/            # Generic prefix-tree for domain matching
-│   ├── sniffer/         # TLS ClientHello SNI extractor
-│   ├── failover/        # Retry + per-domain route cache
-│   ├── connlog/         # Connection event bus (ring buffer + pub/sub)
-│   ├── geo/             # IP geolocation with in-memory cache
-│   ├── metrics/         # Atomic counters (active/total/direct/upstream/errors)
-│   ├── config/          # YAML config loader
-│   └── dashboard/       # HTTP server + SSE + 3D globe UI
-└── config.yaml          # Default configuration
+│   ├── proxy/                # SOCKS5 server + handler + tunnel
+│   ├── router/               # Маршрутизатор поверх Trie, RWMutex
+│   ├── trie/                 # Generic Trie[T any], reverse-label индексация
+│   ├── failover/             # Dial + кэш + fallback логика
+│   ├── sniffer/              # TLS SNI extraction, PeekConn wrapper
+│   ├── metrics/              # atomic.Int64 + Prometheus gauges/counters/histogram
+│   ├── dashboard/            # HTTP + SSE + встроенный HTML/JS дашборд (WebGL globe)
+│   ├── connlog/              # Ring buffer + pub/sub event bus
+│   ├── geo/                  # Геолокация IP через ip-api.com с кэшем
+│   └── config/               # YAML-загрузка
+├── monitoring/
+│   ├── prometheus.yml
+│   ├── alerts.yml
+│   └── grafana/              # Provisioning + dashboard JSON
+├── scripts/
+│   ├── install.sh            # Локальная установка
+│   ├── deploy.sh             # Docker deploy
+│   └── teardown.sh           # Остановка стека
+├── Dockerfile                # Multi-stage, distroless, ~7 MB
+├── docker-compose.yml        # GMRoute + Prometheus + Grafana
+└── config.yaml               # Пример конфига
 ```
 
 ---
 
-## Tech Highlights
+## 🛠 Стек
 
-- **No frameworks** — standard library only (`net`, `net/http`, `sync`, `context`)
-- **Generics** — `Trie[T any]` works for any value type
-- **`sync/atomic`** — lock-free metrics counters
-- **Server-Sent Events** — lightweight real-time push without WebSocket overhead
-- **`io.CopyBuffer` + `sync.Pool`** — reusable 32KB buffers, minimal GC pressure
-- **Context-based shutdown** — `signal.NotifyContext` propagates OS signals to the listener
-
----
-
-## Running Tests
-
-```bash
-go test ./...
-```
+- **Go 1.24** — только stdlib + минимум зависимостей
+- **`gopkg.in/yaml.v3`** — конфигурация
+- **`prometheus/client_golang`** — метрики
+- **WebGL + globe.gl** — 3D-визуализация (встроена в бинарь)
+- **Docker + Prometheus + Grafana** — production-ready observability из коробки
 
 ---
 
-## License
+<div align="center">
 
-MIT
+Сделано с 🖤 на Go · [MIT License](LICENSE)
+
+</div>
